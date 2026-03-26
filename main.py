@@ -201,10 +201,12 @@ def run(args: argparse.Namespace) -> None:
         raise RuntimeError("Cannot read first frame at chosen start time")
 
     if args.select_roi:
+        # Interactive mode for one-time manual table selection.
         roi = select_roi_interactive(first_frame)
     elif args.table_roi:
         roi = parse_roi(args.table_roi)
     else:
+        # Reproducible default ROI for video1.mp4.
         roi = DEFAULT_ROI
 
     roi = clamp_roi(roi, frame_w, frame_h)
@@ -286,6 +288,7 @@ def run(args: argparse.Namespace) -> None:
             fg_mask = bg_subtractor.apply(det_frame)
             roi_mask = fg_mask[sy : sy + sh, sx : sx + sw]
 
+            # Keep only confident foreground and remove small mask noise.
             _, roi_bin = cv2.threshold(
                 roi_mask, args.shadow_threshold, 255, cv2.THRESH_BINARY
             )
@@ -296,6 +299,7 @@ def run(args: argparse.Namespace) -> None:
             if motion_ratio >= args.motion_threshold:
                 last_motion_sec = timestamp_sec
 
+        # "Occupied" is held for a few seconds after last detected motion.
         occupied_candidate = (timestamp_sec - last_motion_sec) <= args.occupied_hold_sec
 
         if timestamp_sec >= warmup_end_sec:
@@ -340,6 +344,7 @@ def run(args: argparse.Namespace) -> None:
                             state=state,
                             motion_ratio=motion_ratio,
                         )
+                        # APPROACH is logged only for EMPTY -> OCCUPIED pair.
                         if last_empty_sec is not None:
                             delay = timestamp_sec - last_empty_sec
                             approach_delays.append(delay)
@@ -354,6 +359,7 @@ def run(args: argparse.Namespace) -> None:
                             )
                             last_empty_sec = None
 
+        # Green = EMPTY, red = OCCUPIED, yellow = warmup.
         if state_initialized:
             box_color = (0, 0, 255) if state == "OCCUPIED" else (0, 180, 0)
             state_label = state
@@ -414,6 +420,7 @@ def run(args: argparse.Namespace) -> None:
         events_df = events_df.sort_values("timestamp_sec").reset_index(drop=True)
     events_df.to_csv(args.events_csv, index=False)
 
+    # Metric requested in the task: mean delay EMPTY -> APPROACH.
     approach_series = pd.Series(approach_delays, dtype="float64")
     mean_delay = (
         float(approach_series.mean()) if not approach_series.empty else float("nan")
